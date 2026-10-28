@@ -5,3 +5,6 @@
 *.o
 *.obj
 build/
+
+# 文档：docx 不进仓库，仓库里只保留 md
+docs/*.docx
