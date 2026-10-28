@@ -1,3 +1,7 @@
-Դ��v1/TcpServer
-Դ��v1/calclient
-Դ��v2/TcpServer/TcpServer
+﻿# 编译产物
+源码v1/TcpServer
+源码v1/calclient
+源码v2/TcpServer/TcpServer
+*.o
+*.obj
+build/
