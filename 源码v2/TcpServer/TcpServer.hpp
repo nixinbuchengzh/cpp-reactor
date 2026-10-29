@@ -34,7 +34,7 @@ namespace tcpS_ns
         TcpServer *tsp;
 
     public:
-        Connection(int sock, TcpServer *p) : _fd(sock), tsp(p)
+        Connection(int sock, TcpServer *p) : _fd(sock), tsp(p), shoutClose(false)
         {
         }
         void Register(func_t recv, func_t send, func_t excepter)
@@ -64,8 +64,7 @@ namespace tcpS_ns
                 ssize_t s = recv(conn->_fd, buffer, sizeof(buffer) - 1, 0);
                 if (s > 0)
                 {
-                    buffer[s] = 0;
-                    conn->inbuffer += buffer;
+                    conn->inbuffer.append(buffer, s);
                 }
                 else if (s == 0)
                 {
@@ -88,8 +87,8 @@ namespace tcpS_ns
                         }
                     }
                 }
-                _server(conn);
             }
+            _server(conn);
             // logMessage(DEBUG,"client# %s",conn->inbuffer.c_str());
         }
 
@@ -122,11 +121,9 @@ namespace tcpS_ns
                     }
                 }
             }
-            if (conn->outbuffer.empty())
+            if (conn->outbuffer.empty() && conn->shoutClose)
             {
-                EnableReadWrite(conn, true, true);
-                if (conn->shoutClose)
-                    conn->_excepter(conn);
+                conn->_excepter(conn);
             }
         }
 
@@ -183,10 +180,26 @@ namespace tcpS_ns
                     events |= (EPOLLIN | EPOLLOUT);
                 if (events & EPOLLHUP)
                     events |= (EPOLLIN | EPOLLOUT);
+
+                auto it = mp.find(sock);
+                if (it == mp.end())
+                    continue;
+
+                Connection *conn = it->second;
+                if (conn == nullptr)
+                    continue;
+
                 if (events & EPOLLIN)
-                    mp[sock]->_recv(mp[sock]);
+                    conn->_recv(conn);
+
                 if (events & EPOLLOUT)
-                    mp[sock]->_send(mp[sock]);
+                {
+                    // 重新查一次，确认 conn 还活着
+                    if (conn)
+                    {
+                        conn->_send(conn);
+                    }
+                }
             }
         }
 
@@ -210,6 +223,20 @@ namespace tcpS_ns
         }
         ~TcpServer()
         {
+            if (evs != nullptr)
+            {
+                delete[] evs;
+                evs = nullptr;
+            }
+            if (!mp.empty())
+            {
+                for (auto& p : mp) 
+                {
+                    close(p.first);
+                    if (p.second)
+                        delete p.second;
+                }
+            }
         }
 
     public:

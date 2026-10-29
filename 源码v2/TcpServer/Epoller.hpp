@@ -39,7 +39,11 @@ public:
         ev.events = events;
 
         int n = epoll_ctl(_epfd,EPOLL_CTL_ADD,sock,&ev);
-        if (n < 0) logMessage(ERROR,"add event error: %d,%s",errno,strerror(errno));
+        if (n < 0) 
+        {
+            logMessage(ERROR,"add event error: %d,%s",errno,strerror(errno));
+            return false;
+        }
         return true;
     }
 

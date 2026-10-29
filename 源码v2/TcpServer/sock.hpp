@@ -40,7 +40,8 @@ public:
         }
         logMessage(NORMAL,"creat socket success: %d",_listensock);
         int opt = 1;
-        setsockopt(_listensock,SOL_SOCKET,SO_REUSEADDR | SO_REUSEPORT,&opt,sizeof(opt));
+        setsockopt(_listensock,SOL_SOCKET,SO_REUSEADDR,&opt,sizeof(opt));
+        setsockopt(_listensock,SOL_SOCKET,SO_REUSEPORT,&opt,sizeof(opt));
     }
 
     void Bind(int port)

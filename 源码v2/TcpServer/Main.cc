@@ -15,10 +15,12 @@ static const std::string ROOT_DIR = "./www";
 
 void handleHttp(Connection *conn)
 {
-    HttpRequest req;
     // 循环解析：支持HTTP流水线（一个连接连续多个请求）
-    while (req.Parse(conn->inbuffer))
+    while (true)
     {
+        HttpRequest req;
+        if (!req.Parse(conn->inbuffer))
+            break;
         HttpResponse resp;
         // 只处理GET，其他方法直接返回400
         if (req.method != "GET")
@@ -29,7 +31,8 @@ void handleHttp(Connection *conn)
         {
             std::string path = req.path;
             // 访问根目录 / 自动重定向到 index.html
-            if (path == "/") path = "/index.html";
+            if (path == "/")
+                path = "/index.html";
 
             // 简单防目录穿越：路径包含".."直接拒绝
             if (path.find("..") != std::string::npos)
@@ -63,7 +66,7 @@ void handleHttp(Connection *conn)
 
         // 判断是否长连接：看请求头Connection
         auto it = req.headers.find("Connection");
-        if (it != req.headers.end() && it->second == "keep-alive")
+        if (it != req.headers.end() && (it->second == "keep-alive" || it->second == "Keep-Alive"))
             resp.keepAlive = true;
         conn->shoutClose = !resp.keepAlive;
 
@@ -76,8 +79,8 @@ void handleHttp(Connection *conn)
     }
 
     // 有发送回调并且输出缓冲区不为空，调用发送函数把outbuffer发出去
-    if (conn->_send && !conn->outbuffer.empty())
-        conn->_send(conn);
+    if (!conn->outbuffer.empty())
+        conn->tsp->EnableReadWrite(conn, true, true);
 }
 
 int main(int argc, char *argv[])
