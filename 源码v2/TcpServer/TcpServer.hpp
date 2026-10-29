@@ -195,9 +195,10 @@ namespace tcpS_ns
                 if (events & EPOLLOUT)
                 {
                     // 重新查一次，确认 conn 还活着
-                    if (conn)
+                    it = mp.find(sock);
+                    if (it != mp.end() && it->second != nullptr)
                     {
-                        conn->_send(conn);
+                        it->second->_send(it->second);
                     }
                 }
             }
@@ -209,8 +210,12 @@ namespace tcpS_ns
                 util::setNonBlock(sock);
 
             bool r = _epoller.AddEvent(sock, events);
-            assert(r);
-            (void)r;
+            if (!r)
+            {
+                logMessage(ERROR, "AddEvent failed, close sock %d", sock);
+                close(sock);
+                return;
+            }
             Connection *connect = new Connection(sock, this);
             connect->Register(recv, send, excepter);
 
@@ -230,13 +235,14 @@ namespace tcpS_ns
             }
             if (!mp.empty())
             {
-                for (auto& p : mp) 
+                for (auto &p : mp)
                 {
                     close(p.first);
                     if (p.second)
                         delete p.second;
                 }
             }
+            mp.clear();
         }
 
     public:
