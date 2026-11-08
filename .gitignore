@@ -1,17 +1,21 @@
-﻿# 编译产物
-源码v1/TcpServer
-源码v1/calclient
-源码v2/TcpServer/TcpServer
+﻿# 编译产物（按具体路径写，避免误伤目录）
+v1/TcpServer
+v1/calclient
+v2/TcpServer/TcpServer
 *.o
 *.obj
+*.so
+*.a
 build/
 
 # 文档：docx 不进仓库，仓库里只保留 md
 docs/*.docx
 
-# 编译产物
-TcpServer
-*.o
-*.so
-*.a
-build/
+# 压测脚本（本地工具，不入库）
+压力测试/
+
+# 编辑器 / 系统
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
