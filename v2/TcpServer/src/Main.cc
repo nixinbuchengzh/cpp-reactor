@@ -11,7 +11,7 @@ static void usage(std::string proc)
               << "\n\n";
 }
 // 静态文件根目录，所有http请求都在这个目录下找文件
-static const std::string ROOT_DIR = "./www";
+static const std::string ROOT_DIR = "../www";
 
 void handleHttp(Connection *conn)
 {

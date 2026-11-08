@@ -34,7 +34,7 @@ namespace tcpS_ns
         TcpServer *tsp;
 
     public:
-        Connection(int sock, TcpServer *p) : _fd(sock), tsp(p), shoutClose(false)
+        Connection(int sock, TcpServer *p) : _fd(sock), shoutClose(false), tsp(p)
         {
         }
         void Register(func_t recv, func_t send, func_t excepter)
@@ -138,7 +138,7 @@ namespace tcpS_ns
             delete conn;
         }
 
-        void Accepter(Connection *p)
+        void Accepter(Connection *)
         {
             for (;;)
             {
@@ -223,7 +223,7 @@ namespace tcpS_ns
         }
 
     public:
-        TcpServer(func_t func, uint16_t port = defaultport) : _server(func), _port(port)
+        TcpServer(func_t func, uint16_t port = defaultport) :  _port(port),_server(func)
         {
         }
         ~TcpServer()
@@ -272,7 +272,10 @@ namespace tcpS_ns
 
         void EnableReadWrite(Connection *conn, bool readable, bool writeable)
         {
-            uint32_t event = (readable ? EPOLLIN : 0) | (writeable ? EPOLLOUT : 0) | EPOLLET;
+            uint32_t event = EPOLLET;
+            if (readable)  event |= EPOLLIN;
+            if (writeable) event |= EPOLLOUT;
+            
             _epoller.Control(conn->_fd, event, EPOLL_CTL_MOD);
         }
 
@@ -281,8 +284,8 @@ namespace tcpS_ns
         Sock _sock;
         Epoller _epoller;
         std::unordered_map<int, Connection *> mp;
-        struct epoll_event *evs;
-        int num;
+        struct epoll_event *evs = nullptr;
+        int num = 0;
         func_t _server;
     };
 }

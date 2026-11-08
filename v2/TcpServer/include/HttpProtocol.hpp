@@ -78,7 +78,7 @@ public:
         resp.status = 404;
         resp.statusText = "Not Found";
         resp.contentType = "text/html";
-        std::string path = "./www/404.html";
+        std::string path = "../www/404.html";
         std::ifstream ifs(path, std::ios::binary);
         std::ostringstream oss;
         oss << ifs.rdbuf();

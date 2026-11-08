@@ -8,3 +8,10 @@ build/
 
 # 文档：docx 不进仓库，仓库里只保留 md
 docs/*.docx
+
+# 编译产物
+TcpServer
+*.o
+*.so
+*.a
+build/
