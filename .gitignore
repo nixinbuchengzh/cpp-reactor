@@ -1,4 +1,4 @@
-﻿# 编译产物（按具体路径写，避免误伤目录）
+# 编译产物（按具体路径写，避免误伤目录）
 v1/TcpServer
 v1/calclient
 v2/TcpServer/TcpServer
