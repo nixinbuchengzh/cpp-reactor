@@ -3,7 +3,11 @@
 #include <iostream>
 #include <functional>
 #include <unordered_map>
-#include <cassert>
+#include <string>
+#include <cerrno>
+#include <utility>
+#include <unistd.h>
+#include <sys/socket.h>
 #include "log.hpp"
 #include "sock.hpp"
 #include "Epoller.hpp"
@@ -17,7 +21,6 @@ namespace tcpS_ns
     class TcpServer;
 
     using func_t = std::function<void(Connection *)>;
-    // using handel_t = std::function<void(std::string)>;
 
     class Connection
     {
@@ -48,51 +51,58 @@ namespace tcpS_ns
         }
         void Close()
         {
-            close(_fd);
+            if (_fd >= 0)
+            {
+                close(_fd);
+                _fd = -1;
+            }
         }
     };
 
     class TcpServer
     {
     private:
-        void Recver(Connection *conn)
+        static void Recver(Connection *conn)
         {
-            // logMessage(DEBUG,"read...");
             char buffer[1024];
-            while (true)
+            for (;;)
             {
-                ssize_t s = recv(conn->_fd, buffer, sizeof(buffer) - 1, 0);
+                ssize_t s = recv(conn->_fd, buffer, sizeof(buffer), 0);
                 if (s > 0)
                 {
-                    conn->inbuffer.append(buffer, s);
+                    conn->inbuffer.append(buffer, static_cast<size_t>(s));
+                    continue;
                 }
-                else if (s == 0)
+                else if (s == 0) // 对端关闭
                 {
-                    if (conn->_excepter)
+                    // 如果还有没处理完的请求，先处理掉，再等发送完关闭
+                    if (!conn->inbuffer.empty() && _server)
+                        _server(conn);
+                    conn->shoutClose = true;
+                    if (!conn->outbuffer.empty())
+                        EnableReadWrite(conn, false, true);
+                    else if (conn->_excepter)
                         conn->_excepter(conn);
                     return;
                 }
                 else
                 {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK)
-                        break;
-                    else if (errno == EINTR)
+                    if (errno == EINTR)
                         continue;
-                    else
-                    {
-                        if (conn->_excepter)
-                        {
-                            conn->_excepter(conn);
-                            return;
-                        }
-                    }
+                    else if (errno == EAGAIN || errno == EWOULDBLOCK)
+                        break;
+                    else if (conn->_excepter)
+                        conn->_excepter(conn);
+                    return;
                 }
             }
-            _server(conn);
-            // logMessage(DEBUG,"client# %s",conn->inbuffer.c_str());
+
+            if (_server)
+                _server(conn);
         }
 
-        void Sender(Connection *conn)
+        // 写事件回调
+        static void Sender(Connection *conn)
         {
             while (true)
             {
@@ -127,7 +137,7 @@ namespace tcpS_ns
             }
         }
 
-        void Excepter(Connection *conn)
+        static void Excepter(Connection *conn)
         {
             _epoller.Control(conn->_fd, 0, EPOLL_CTL_DEL);
             conn->Close();
@@ -143,18 +153,18 @@ namespace tcpS_ns
             for (;;)
             {
                 std::string clientip;
-                uint16_t clientport;
+                uint16_t clientport = 0;
                 int err = 0;
                 int sock = _sock.Accept(&clientip, &clientport, &err);
-                if (sock > 0)
+                if (sock >= 0)
                 {
-                    AddConnection(
+                    bool ok = AddConnection(
                         sock, EPOLLIN | EPOLLET,
-                        std::bind(&TcpServer::Recver, this, std::placeholders::_1),
-                        std::bind(&TcpServer::Sender, this, std::placeholders::_1),
-                        std::bind(&TcpServer::Excepter, this, std::placeholders::_1));
-
-                    logMessage(DEBUG, "get a new link, info: [%s:%d]", clientip.c_str(), clientport);
+                        std::bind(&TcpServer::Recver, std::placeholders::_1),
+                        std::bind(&TcpServer::Sender, std::placeholders::_1),
+                        std::bind(&TcpServer::Excepter, std::placeholders::_1));
+                    if (ok)
+                        logMessage(DEBUG, "get a new link, info: [%s:%d]", clientip.c_str(), clientport);
                 }
                 else
                 {
@@ -204,28 +214,28 @@ namespace tcpS_ns
             }
         }
 
-        void AddConnection(int sock, uint32_t events, func_t recv, func_t send, func_t excepter)
+        bool AddConnection(int sock, uint32_t events, func_t recv, func_t send, func_t excepter)
         {
-            if (events & EPOLLIN)
-                util::setNonBlock(sock);
+            util::setNonBlock(sock);
 
-            bool r = _epoller.AddEvent(sock, events);
-            if (!r)
+            if (!_epoller.AddEvent(sock, events))
             {
                 logMessage(ERROR, "AddEvent failed, close sock %d", sock);
                 close(sock);
-                return;
+                return false;
             }
+
             Connection *connect = new Connection(sock, this);
             connect->Register(recv, send, excepter);
-
             mp[sock] = connect;
+            return true;
         }
 
     public:
-        TcpServer(func_t func, uint16_t port = defaultport) :  _port(port),_server(func)
+        TcpServer(uint16_t port = defaultport) : _port(port)
         {
         }
+
         ~TcpServer()
         {
             if (evs != nullptr)
@@ -243,6 +253,11 @@ namespace tcpS_ns
                 }
             }
             mp.clear();
+        }
+
+        static void SetHandler(func_t handler)
+        {
+            _server = std::move(handler);
         }
 
     public:
@@ -266,26 +281,28 @@ namespace tcpS_ns
             while (true)
             {
                 Loop(-1);
-                // logMessage(DEBUG, "timeout...");
             }
         }
 
-        void EnableReadWrite(Connection *conn, bool readable, bool writeable)
+        static void EnableReadWrite(Connection *conn, bool readable, bool writeable)
         {
             uint32_t event = EPOLLET;
-            if (readable)  event |= EPOLLIN;
-            if (writeable) event |= EPOLLOUT;
-            
+            if (readable)
+                event |= EPOLLIN;
+            if (writeable)
+                event |= EPOLLOUT;
+
             _epoller.Control(conn->_fd, event, EPOLL_CTL_MOD);
         }
 
     private:
         uint16_t _port;
         Sock _sock;
-        Epoller _epoller;
-        std::unordered_map<int, Connection *> mp;
         struct epoll_event *evs = nullptr;
         int num = 0;
-        func_t _server;
+
+        inline static Epoller _epoller;
+        inline static std::unordered_map<int, Connection *> mp;
+        inline static func_t _server;
     };
 }

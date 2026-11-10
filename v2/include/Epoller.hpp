@@ -15,6 +15,9 @@ public:
     {
 
     }
+    Epoller(const Epoller &) = delete;
+    Epoller &operator=(const Epoller &) = delete;
+
     ~Epoller()
     {
         if (_epfd != -1) close(_epfd);
@@ -22,7 +25,7 @@ public:
 public:
     bool CreateEpoll()
     {
-        _epfd = epoll_create(size);
+        _epfd = epoll_create1(EPOLL_CLOEXEC);
         if (_epfd < 0)
         {
             logMessage(FATAL,"epoll create error: %d,%s",errno,strerror(errno));

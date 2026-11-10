@@ -25,9 +25,16 @@ class Sock
 public:
     Sock() : _listensock(defualtsock)
     {}
+    Sock(const Sock &) = delete;
+    Sock &operator=(const Sock &) = delete;
+
     ~Sock()
     {
-        if (_listensock != defualtsock) close(_listensock);
+        if (_listensock != defualtsock)
+        {
+            close(_listensock);
+            _listensock = defualtsock;
+        }
     }
 public:
     void Socket()

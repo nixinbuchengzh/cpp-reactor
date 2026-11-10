@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <string>
+#include <cstdio>
 #include <cstdarg>
 #include <ctime>
 #include <unistd.h>
@@ -12,25 +13,25 @@
 #define ERROR   3
 #define FATAL   4
 
-const char * to_levelstr(int level)
+inline const char *to_levelstr(int level)
 {
-    switch(level)
+    switch (level)
     {
-        case DEBUG : return "DEBUG";
-        case NORMAL: return "NORMAL";
+        case DEBUG:   return "DEBUG";
+        case NORMAL:  return "NORMAL";
         case WARNING: return "WARNING";
-        case ERROR: return "ERROR";
-        case FATAL: return "FATAL";
-        default : return nullptr;
+        case ERROR:   return "ERROR";
+        case FATAL:   return "FATAL";
+        default:      return "UNKNOWN";
     }
 }
 
-void logMessage(int level, const char *format, ...)
+inline void logMessage(int level, const char *format, ...)
 {
 #define NUM 1024
     char logprefix[NUM];
     snprintf(logprefix, sizeof(logprefix), "[%s][%ld][pid: %d]",
-        to_levelstr(level), (long int)time(nullptr), getpid());
+             to_levelstr(level), static_cast<long int>(time(nullptr)), getpid());
 
     char logcontent[NUM];
     va_list arg;
@@ -39,4 +40,5 @@ void logMessage(int level, const char *format, ...)
     va_end(arg);
 
     std::cout << logprefix << logcontent << std::endl;
+#undef NUM
 }
