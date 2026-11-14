@@ -1,16 +1,18 @@
 #include "HttpHandle.h"
 
+#include <utility>
 
-void handleHttp(tcpS_ns::Connection *conn)
+// 在线程池里执行：解析 HTTP 请求、读文件、生成响应
+// 这里不直接操作 Connection，结果交给 IO 线程统一写回
+tcpS_ns::BusinessResult handleHttp(std::string data)
 {
-    if (conn == nullptr || conn->tsp == nullptr)
-        return;
+    tcpS_ns::BusinessResult result;
 
     // 循环解析：支持 HTTP 流水线（一个连接连续多个请求）
     while (true)
     {
         HttpRequest req;
-        HttpRequest::ParseState state = req.Parse(conn->inbuffer);
+        HttpRequest::ParseState state = req.Parse(data);
 
         if (state == HttpRequest::ParseState::Incomplete)
             break;
@@ -20,8 +22,9 @@ void handleHttp(tcpS_ns::Connection *conn)
             // 报文非法，回 400 并关闭连接，避免继续解析垃圾数据
             HttpResponse resp = HttpResponse::BadRequest();
             resp.keepAlive = false;
-            conn->shoutClose = true;
-            conn->outbuffer += resp.ToString();
+            result.closeAfterSend = true;
+            result.out += resp.ToString();
+            data.clear();
             break;
         }
 
@@ -73,7 +76,7 @@ void handleHttp(tcpS_ns::Connection *conn)
                 struct stat st;
                 if (stat(fullPath.c_str(), &st) < 0 || !S_ISREG(st.st_mode))
                 {
-                    // 文件不存在或不是普通文件 → 404
+                    // 文件不存在或不是普通文件 -> 404
                     resp = HttpResponse::NotFound();
                 }
                 else
@@ -98,17 +101,22 @@ void handleHttp(tcpS_ns::Connection *conn)
         }
 
         resp.keepAlive = keepAlive;
-        conn->shoutClose = !keepAlive;
 
-        // 把响应报文追加到连接的输出缓冲区，等待发送
-        conn->outbuffer += resp.ToString();
-
-        // 短连接：处理完这一个请求就不再解析后续请求
+        // 短连接：响应发完后关闭，且不再处理后面的请求
         if (!keepAlive)
+            result.closeAfterSend = true;
+
+        // 把响应报文追加到结果里，由 IO 线程统一发送
+        result.out += resp.ToString();
+
+        if (!keepAlive)
+        {
+            data.clear();
             break;
+        }
     }
 
-    // 有数据要发就打开 EPOLLOUT，由 Sender 负责发送
-    if (!conn->outbuffer.empty())
-        tcpS_ns::TcpServer::EnableReadWrite(conn, true, true);
+    // 没解析完的数据退回 IO 线程，等下次收到数据再拼起来
+    result.leftover = std::move(data);
+    return result;
 }
